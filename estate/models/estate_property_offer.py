@@ -1,11 +1,13 @@
 from odoo import fields, models, api
 import datetime
 from odoo.exceptions import UserError
+from datetime import date
 
 
 class EstatePropertyOffer(models.Model):
     _name = "estate.property.offer"
     _description = "Estate Property Model"
+    _order = "price desc"
 
     price = fields.Float(string="Price")
     status = fields.Selection(string="Status",
@@ -30,9 +32,10 @@ class EstatePropertyOffer(models.Model):
 
     def _inverse_validity_date(self):
         for rec in self:
-            created_date = fields.Date.today()
             if rec.date_deadline:
-                rec.validity = rec.date_deadline.day - created_date.day
+                d1 = date(rec.date_deadline.year, rec.date_deadline.month, rec.date_deadline.day)
+                d2 = date(fields.Date.today().year, fields.Date.today().month, fields.Date.today().day)
+                rec.validity = (d1 - d2).days
 
     def accept_offer(self):
         for rec in self:

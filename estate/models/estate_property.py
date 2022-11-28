@@ -10,6 +10,7 @@ from odoo import fields, models, api
 class EstateProperty(models.Model):
     _name = "estate.property"
     _description = "Estate Property"
+    _order = "id desc"
 
     name = fields.Char(string='Name', required=True)
     description = fields.Text(string="Description")
@@ -29,20 +30,20 @@ class EstateProperty(models.Model):
     )
     active = fields.Boolean(default=True)
     state = fields.Selection(string="Status",
-        selection=[('new', 'New'), ('offer Received', 'Offer Received'), ('offer accepted', 'Offer Accepted'),
+        selection=[('new', 'New'), ('offer received', 'Offer Received'), ('offer accepted', 'Offer Accepted'),
                    ('sold', 'Sold'), ('cancelled', 'Cancelled')],
         default="new"
     )
     property_type_id = fields.Many2one("estate.property.type", string="Property Types")
     user_id = fields.Many2one('res.users', string="Salesman", index=True, default=lambda self: self.env.user)
-    buyer_id = fields.Many2one('res.partner', string="Buyer", copy=False)
+    buyer_id = fields.Many2one('res.partner', string="Buyer", copy=False, compute="_accepted_buyer")
     property_tag_ids = fields.Many2many("estate.property.tag", string="Name")
     offer_ids = fields.One2many("estate.property.offer", "property_id")
     total_area = fields.Integer(default=0, compute="_compute_total", string="Total Area (sqm)")
     best_price = fields.Float(compute="_highest_price", string="Best Offer")
+    property_id = fields.Many2one("estate.property.type")
 
     _sql_constraints = [
-        ('positive_price', 'CHECK(best_price >= 0)', "Prices must not be a negative number"),
         ('positive_price2', 'CHECK(expected_price >= 0)', "Prices must not be a negative number")
     ]
 
@@ -64,16 +65,27 @@ class EstateProperty(models.Model):
     @api.depends("offer_ids")
     def _selling_price(self):
         for rec in self:
-
-            if rec.offer_ids.status == 'accepted':
-                rec.selling_price = rec.offer_ids.mapped("price")[0]
+            accepted_offers = rec.offer_ids.filtered(lambda x: x.status == 'accepted')
+            if len(accepted_offers.ids) > 1:
+                raise ValidationError("An offer has already been accepted! Only one offer can be accepted. Please "
+                                      "refuse the existing offer to accept a new one.")
+            elif len(accepted_offers.ids) == 1:
+                accepted_offer = accepted_offers[0]
+                rec.state = "offer accepted"
+                rec.selling_price = accepted_offer.price
             else:
-                rec.selling_price = 0
-            # for stat in rec.offer_ids.status:
-            #     if stat == 'accepted':
-            #         rec.selling_price = rec.offer_ids.price
-            #     else:
-            #         rec.selling_price = 0
+                rec.selling_price = 0.0
+                rec.state = "offer received"
+
+    @api.depends("offer_ids")
+    def _accepted_buyer(self):
+        for rec in self:
+            accepted_offers = rec.offer_ids.filtered(lambda x: x.status == 'accepted')
+            if len(accepted_offers.ids) >= 1:
+                accepted_offer = accepted_offers[0]
+                rec.buyer_id = accepted_offer.partner_id.id
+            else:
+                rec.buyer_id = ''
 
     @api.onchange("garden")
     def onchange_garden(self):
@@ -84,12 +96,10 @@ class EstateProperty(models.Model):
             self.garden_area_sqm = 0
             self.garden_orientation = ''
 
-    @api.constrains("expected_price", "selling_price")
+    @api.constrains("selling_price")
     def _check_selling_price(self):
         for rec in self:
-            if rec.selling_price == 0:
-                break
-            elif rec.selling_price < rec.expected_price * 0.9:
+            if rec.selling_price < rec.expected_price * 0.9:
                 raise ValidationError("Selling price must not be less than 90% of the Expected Price")
 
     def sold(self):
