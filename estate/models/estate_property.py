@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 import datetime
+import warnings
+from odoo.exceptions import UserError, ValidationError
 
 from odoo import fields, models, api
 
@@ -15,18 +17,18 @@ class EstateProperty(models.Model):
     date_availability = fields.Date(string="Available From", copy=False,
                                     default=lambda self: fields.Date.today() + datetime.timedelta(90))
     expected_price = fields.Float(string="Expected Price", required=True)
-    selling_price = fields.Float(readonly=True, copy=False)
+    selling_price = fields.Float(compute="_selling_price", copy=False)
     bedrooms = fields.Integer(string="Bedrooms", default=2)
     living_area_sqm = fields.Integer(string="Living Area (sqm)")
     facades = fields.Integer(string="Facades")
     garage = fields.Boolean()
-    garden = fields.Boolean()
-    garden_area_sqm = fields.Integer()
+    garden = fields.Boolean(default=False)
+    garden_area_sqm = fields.Integer(default=0)
     garden_orientation = fields.Selection(
         selection=[('east', 'East'), ('west', 'West'), ('north', 'North'), ('south', 'South')]
     )
     active = fields.Boolean(default=True)
-    state = fields.Selection(
+    state = fields.Selection(string="Status",
         selection=[('new', 'New'), ('offer Received', 'Offer Received'), ('offer accepted', 'Offer Accepted'),
                    ('sold', 'Sold'), ('cancelled', 'Cancelled')],
         default="new"
@@ -37,6 +39,12 @@ class EstateProperty(models.Model):
     property_tag_ids = fields.Many2many("estate.property.tag", string="Name")
     offer_ids = fields.One2many("estate.property.offer", "property_id")
     total_area = fields.Integer(default=0, compute="_compute_total", string="Total Area (sqm)")
+    best_price = fields.Float(compute="_highest_price", string="Best Offer")
+
+    _sql_constraints = [
+        ('positive_price', 'CHECK(best_price >= 0)', "Prices must not be a negative number"),
+        ('positive_price2', 'CHECK(expected_price >= 0)', "Prices must not be a negative number")
+    ]
 
     @api.depends("garden_area_sqm", "living_area_sqm")
     def _compute_total(self):
@@ -44,3 +52,56 @@ class EstateProperty(models.Model):
             rec.total_area = False
             if rec.garden_area_sqm:
                 rec.total_area = rec.living_area_sqm + rec.garden_area_sqm
+
+    @api.depends("offer_ids")
+    def _highest_price(self):
+        for rec in self:
+            if rec.offer_ids:
+                rec.best_price = max(rec.offer_ids.mapped("price"))
+            else:
+                rec.best_price = 0
+
+    @api.depends("offer_ids")
+    def _selling_price(self):
+        for rec in self:
+
+            if rec.offer_ids.status == 'accepted':
+                rec.selling_price = rec.offer_ids.mapped("price")[0]
+            else:
+                rec.selling_price = 0
+            # for stat in rec.offer_ids.status:
+            #     if stat == 'accepted':
+            #         rec.selling_price = rec.offer_ids.price
+            #     else:
+            #         rec.selling_price = 0
+
+    @api.onchange("garden")
+    def onchange_garden(self):
+        if self.garden:
+            self.garden_area_sqm = 10
+            self.garden_orientation = "north"
+        else:
+            self.garden_area_sqm = 0
+            self.garden_orientation = ''
+
+    @api.constrains("expected_price", "selling_price")
+    def _check_selling_price(self):
+        for rec in self:
+            if rec.selling_price == 0:
+                break
+            elif rec.selling_price < rec.expected_price * 0.9:
+                raise ValidationError("Selling price must not be less than 90% of the Expected Price")
+
+    def sold(self):
+        for rec in self:
+            if rec.state != 'cancelled':
+                rec.state = 'sold'
+            else:
+                raise UserError("Cancelled properties cannot be sold!")
+
+    def cancelled(self):
+        for rec in self:
+            if rec.state != 'cancelled':
+                rec.state = 'cancelled'
+
+
