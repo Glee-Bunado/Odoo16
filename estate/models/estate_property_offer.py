@@ -17,6 +17,7 @@ class EstatePropertyOffer(models.Model):
     property_id = fields.Many2one("estate.property", required=True)
     validity = fields.Integer(string="Validity", default=7)
     date_deadline = fields.Date(string="Deadline", compute="_validity_date", inverse="_inverse_validity_date")
+    property_type_id = fields.Many2one(related="property_id.property_type_id", store=True)
 
     _sql_constraints = [
         ('positive_price', 'CHECK(price >= 0)', "Prices must not be a negative number")

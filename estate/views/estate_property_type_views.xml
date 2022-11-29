@@ -4,8 +4,10 @@
         <field name="name">estate.property.type.view.tree"</field>
         <field name="model">estate.property.type</field>
         <field name="arch" type="xml">
-            <tree editable="bottom">
+            <tree>
                 <field name="name"/>
+                <field name="offer_ids"/>
+                <field name="offer_count"/>
                 <field name="sequence" widget="handle"/>
             </tree>
 
@@ -18,6 +20,12 @@
         <field name="arch" type="xml">
           <form>
               <sheet>
+                  <div class="oe_button_box" name="button_box">
+                      <button class="oe_stat_button" type="action" name="property_id.property_type_id"  icon="fa-money" string="Offers">
+                          <field name="offer_count" />
+                      </button>
+
+                  </div>
                   <notebook>
                       <page name="Properties">
                            <field name ="property_ids">
