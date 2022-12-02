@@ -48,9 +48,17 @@ class EstatePropertyOffer(models.Model):
             if rec.status == 'pending' or rec.status == 'accepted':
                 rec.status = 'refused'
 
-
-
-
+    @api.model
+    def create(self, vals):
+        # print("----------------------", self.env['estate.property'].browse(vals['property_id']))
+        new_instance = self.env['estate.property'].browse(vals['property_id'])
+        # print('---------------------------', new_price.best_price)
+        new_instance.state = 'offer received'
+        if self.price < new_instance.best_price:
+            raise ValueError(f"Offer must be higher than {new_instance.best_price}")
+        else:
+            return super(EstatePropertyOffer, self).create(vals)
+    #
 
 
 

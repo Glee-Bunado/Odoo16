@@ -28,12 +28,13 @@ class EstateProperty(models.Model):
     garden_orientation = fields.Selection(
         selection=[('east', 'East'), ('west', 'West'), ('north', 'North'), ('south', 'South')]
     )
-    active = fields.Boolean(default=True)
+    active = fields.Boolean(string="Available", default=True)
     state = fields.Selection(string="Status",
-        selection=[('new', 'New'), ('offer received', 'Offer Received'), ('offer accepted', 'Offer Accepted'),
-                   ('sold', 'Sold'), ('cancelled', 'Cancelled')],
-        default="new"
-    )
+                             selection=[('new', 'New'), ('offer received', 'Offer Received'),
+                                        ('offer accepted', 'Offer Accepted'),
+                                        ('sold', 'Sold'), ('cancelled', 'Cancelled')],
+                             default="new"
+                             )
     property_type_id = fields.Many2one("estate.property.type", string="Property Types")
     user_id = fields.Many2one('res.users', string="Salesman", index=True, default=lambda self: self.env.user)
     buyer_id = fields.Many2one('res.partner', string="Buyer", copy=False, compute="_accepted_buyer")
@@ -76,7 +77,6 @@ class EstateProperty(models.Model):
                 rec.selling_price = accepted_offer.price
             else:
                 rec.selling_price = 0.0
-                rec.state = "offer received"
 
     @api.depends("offer_ids")
     def _accepted_buyer(self):
@@ -105,7 +105,7 @@ class EstateProperty(models.Model):
 
     def sold(self):
         for rec in self:
-            if rec.state != 'cancelled':
+            if rec.state != 'cancelled' or rec.state == 'offer accepted':
                 rec.state = 'sold'
             else:
                 raise UserError("Cancelled properties cannot be sold!")
@@ -114,5 +114,12 @@ class EstateProperty(models.Model):
         for rec in self:
             if rec.state != 'cancelled':
                 rec.state = 'cancelled'
+
+    @api.ondelete(at_uninstall=False)
+    def _unlink_except_status_new(self):
+        for rec in self:
+            if rec.state != 'new' or rec.state != 'cancelled':
+                raise UserError("Only new and cancelled properties can be deleted")
+
 
 
