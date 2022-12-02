@@ -4,6 +4,7 @@ import datetime
 import warnings
 from odoo.exceptions import UserError, ValidationError
 
+
 from odoo import fields, models, api
 
 
