@@ -1,9 +1,10 @@
 from odoo import fields, models
+from custom.estate.models import estate_property
 
 
-class EstateProperty(models.Model):
+class InheritedEstateProperty(models.Model):
     _inherit = "estate.property"
 
     def sold(self):
         print("--------------------------------I am an inherited function")
-        return super().sold()
+        super(InheritedEstateProperty, self).sold()

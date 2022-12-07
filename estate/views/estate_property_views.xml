@@ -34,7 +34,7 @@
                </header>
 
 
-               <sheet attrs="{'readonly': [('state','=','sold'), ('state','=','cancelled')]}">
+               <sheet>
                    <group>
                        <field name="name"/>
                        <field name="property_tag_ids" widget="many2many_tags"/>

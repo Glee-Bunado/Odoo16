@@ -1,0 +1,15 @@
+<odoo>
+
+
+    <record id="res_users_view_form_extend" model="ir.ui.view">
+        <field name="name">res.users.view.form.extend</field>
+        <field name="model">res.users</field>
+        <field name="inherit_id" ref="base.view_users_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//page[@name='properties']" position="inside">
+                <field name="property_ids" attrs="{'readonly': [('name','!=',' ')]}"/>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>
