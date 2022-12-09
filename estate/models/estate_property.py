@@ -4,8 +4,8 @@ import datetime
 import warnings
 from odoo.exceptions import UserError, ValidationError
 
-
 from odoo import fields, models, api
+from odoo.tools import float_is_zero, float_compare
 
 
 class EstateProperty(models.Model):
@@ -19,7 +19,7 @@ class EstateProperty(models.Model):
     date_availability = fields.Date(string="Available From", copy=False,
                                     default=lambda self: fields.Date.today() + datetime.timedelta(90))
     expected_price = fields.Float(string="Expected Price", required=True)
-    selling_price = fields.Float(compute="_selling_price", copy=False)
+    selling_price = fields.Float(String="Selling Price", copy=False)
     bedrooms = fields.Integer(string="Bedrooms", default=2)
     living_area_sqm = fields.Integer(string="Living Area (sqm)")
     facades = fields.Integer(string="Facades")
@@ -40,7 +40,7 @@ class EstateProperty(models.Model):
     user_id = fields.Many2one('res.users', string="Salesman", index=True, default=lambda self: self.env.user)
     buyer_id = fields.Many2one('res.partner', string="Buyer", copy=False, compute="_accepted_buyer")
     property_tag_ids = fields.Many2many("estate.property.tag", string="Tags")
-    offer_ids = fields.One2many("estate.property.offer", "property_id")
+    offer_ids = fields.One2many("estate.property.offer", "property_id", string="Offers")
     total_area = fields.Integer(default=0, compute="_compute_total", string="Total Area (sqm)")
     best_price = fields.Float(compute="_highest_price", string="Best Offer")
     property_id = fields.Many2one("estate.property.type")
@@ -65,19 +65,19 @@ class EstateProperty(models.Model):
             else:
                 rec.best_price = 0
 
-    @api.depends("offer_ids")
-    def _selling_price(self):
-        for rec in self:
-            accepted_offers = rec.offer_ids.filtered(lambda x: x.status == 'accepted')
-            if len(accepted_offers.ids) > 1:
-                raise ValidationError("An offer has already been accepted! Only one offer can be accepted. Please "
-                                      "refuse the existing offer to accept a new one.")
-            elif len(accepted_offers.ids) == 1:
-                accepted_offer = accepted_offers[0]
-                rec.state = "offer accepted"
-                rec.selling_price = accepted_offer.price
-            else:
-                rec.selling_price = 0.0
+    # @api.depends("offer_ids")
+    # def _selling_price(self):
+    #     for rec in self:
+    #         accepted_offers = rec.offer_ids.filtered(lambda x: x.status == 'accepted')
+    #         if len(accepted_offers.ids) > 1:
+    #             raise ValidationError("An offer has already been accepted! Only one offer can be accepted. Please "
+    #                                   "refuse the existing offer to accept a new one.")
+    #         elif len(accepted_offers.ids) == 1:
+    #             accepted_offer = accepted_offers[0]
+    #             rec.state = "offer accepted"
+    #             rec.selling_price = accepted_offer.price
+    #         else:
+    #             rec.selling_price = 0.0
 
     @api.depends("offer_ids")
     def _accepted_buyer(self):
@@ -98,23 +98,31 @@ class EstateProperty(models.Model):
             self.garden_area_sqm = 0
             self.garden_orientation = ''
 
-    @api.constrains("selling_price")
+    @api.constrains("selling_price", "expected_price")
     def _check_selling_price(self):
         for rec in self:
-            if rec.selling_price < rec.expected_price * 0.9:
-                raise ValidationError("Selling price must not be less than 90% of the Expected Price")
+            if (
+                    not float_is_zero(rec.selling_price, precision_rounding=0.01)
+                    and float_compare(rec.selling_price, rec.expected_price * 90.0 / 100.0,
+                                      precision_rounding=0.01) < 0
+            ):
+                raise ValidationError(
+                    "The selling price must be at least 90% of the expected price! "
+                    + "You must reduce the expected price if you want to accept this offer."
+                )
 
     def sold(self):
-        for rec in self:
-            if rec.state != 'cancelled' or rec.state == 'offer accepted':
-                rec.state = 'sold'
-            else:
-                raise UserError("Cancelled properties cannot be sold!")
+        if "canceled" in self.mapped("state"):
+            raise UserError("Canceled properties cannot be sold.")
+        elif self.selling_price != 0:
+            return self.write({"state": "sold"})
+        else:
+            raise ValidationError("Properties with no Selling Price cannot be sold")
 
     def cancelled(self):
-        for rec in self:
-            if rec.state != 'cancelled':
-                rec.state = 'cancelled'
+        if "sold" in self.mapped("state"):
+            raise UserError("Sold properties cannot be canceled.")
+        return self.write({"state": "cancelled"})
 
     @api.ondelete(at_uninstall=False)
     def _unlink_except_status_new(self):
